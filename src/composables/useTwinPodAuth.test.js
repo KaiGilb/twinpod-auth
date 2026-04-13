@@ -62,6 +62,7 @@ describe('useTwinPodAuth', () => {
 
   })
 
+  // Spec: F.NoteWorld — OIDC redirect must be processed on every page load to establish/restore session
   describe('handleRedirect', () => {
 
     test('calls handleIncomingRedirect with restorePreviousSession: true', async () => {
@@ -154,6 +155,7 @@ describe('useTwinPodAuth', () => {
 
   })
 
+  // Spec: F.NoteWorld — user must be able to disconnect from TwinPod; session must be cleared on logout
   describe('logout', () => {
 
     test('calls session.logout with logoutType: app', async () => {
@@ -187,12 +189,120 @@ describe('useTwinPodAuth', () => {
 
   })
 
+  // Spec: F.NoteWorld — session.fetch must be provided to child composables for authenticated TwinPod access
   describe('session', () => {
 
     test('exposes the session object for use as twinpodFetch', () => {
       const mock = makeMockSession()
       const { session } = useTwinPodAuth({ _sessionOverride: mock })
       expect(session).toBe(mock)
+    })
+
+  })
+
+  // --- Gap tests written by QATester ---
+
+  describe('login — loading state', () => {
+
+    // Spec: F.NoteWorld — user must be able to authenticate against TwinPod via Solid-OIDC
+    // Gap: login() never sets loading.value = true; the LoginView disables its button on loading,
+    // so if loading is never set the button is never visually disabled during the login flow.
+    test('loading is false after login completes successfully', async () => {
+      const mock = makeMockSession()
+      const { login, loading } = useTwinPodAuth({ _sessionOverride: mock })
+      await login('https://tst-first.demo.systemtwin.com/i')
+      expect(loading.value).toBe(false)
+    })
+
+    test('loading is false after login throws', async () => {
+      const mock = makeMockSession()
+      mock.login.mockRejectedValue(new Error('Invalid issuer'))
+      const { login, loading } = useTwinPodAuth({ _sessionOverride: mock })
+      await login('bad-issuer')
+      expect(loading.value).toBe(false)
+    })
+
+    test('loading is true while session.login is in progress', async () => {
+      const mock = makeMockSession()
+      let capturedLoading
+      mock.login.mockImplementation(async () => {
+        capturedLoading = loading.value
+      })
+      const { login, loading } = useTwinPodAuth({ _sessionOverride: mock })
+      await login('https://tst-first.demo.systemtwin.com/i')
+      expect(capturedLoading).toBe(true)
+    })
+
+  })
+
+  describe('logout — loading state', () => {
+
+    // Gap: logout() never sets loading.value = true or resets it; no test covers this path.
+    test('loading is false after logout completes successfully', async () => {
+      const mock = makeMockSession({ isLoggedIn: true, webId: 'https://pod.example.com/profile/card#me' })
+      const { logout, loading } = useTwinPodAuth({ _sessionOverride: mock })
+      await logout()
+      expect(loading.value).toBe(false)
+    })
+
+    test('loading is false after logout throws', async () => {
+      const mock = makeMockSession({ isLoggedIn: true })
+      mock.logout.mockRejectedValue(new Error('Logout failed'))
+      const { logout, loading } = useTwinPodAuth({ _sessionOverride: mock })
+      await logout()
+      expect(loading.value).toBe(false)
+    })
+
+    test('loading is true while session.logout is in progress', async () => {
+      const mock = makeMockSession({ isLoggedIn: true })
+      let capturedLoading
+      mock.logout.mockImplementation(async () => {
+        capturedLoading = loading.value
+      })
+      const { logout, loading } = useTwinPodAuth({ _sessionOverride: mock })
+      await logout()
+      expect(capturedLoading).toBe(true)
+    })
+
+    // Gap: no test verifies logout clears a pre-existing error before attempting the call.
+    test('clears a previous error before attempting logout', async () => {
+      const mock = makeMockSession({ isLoggedIn: true })
+      const { logout, error } = useTwinPodAuth({ _sessionOverride: mock })
+      error.value = { type: 'auth', message: 'old error' }
+      await logout()
+      expect(error.value).toBeNull()
+    })
+
+  })
+
+  describe('handleRedirect — loading state during operation', () => {
+
+    // Gap: no test verifies loading is true while handleIncomingRedirect is in progress.
+    test('loading is true while handleIncomingRedirect is in progress', async () => {
+      const mock = makeMockSession()
+      let capturedLoading
+      mock.handleIncomingRedirect.mockImplementation(async () => {
+        // Capture loading mid-flight before the promise resolves
+        capturedLoading = undefined // will be set by inspection via the composable ref below
+      })
+      const { handleRedirect, loading } = useTwinPodAuth({ _sessionOverride: mock })
+      // Intercept during the async call
+      mock.handleIncomingRedirect.mockImplementation(async () => {
+        capturedLoading = loading.value
+      })
+      await handleRedirect()
+      expect(capturedLoading).toBe(true)
+    })
+
+  })
+
+  describe('initial state — webId with active session', () => {
+
+    // Gap: explicit test that webId is populated from an already-authenticated session on init.
+    test('webId reflects an already-active session webId on init', () => {
+      const mock = makeMockSession({ isLoggedIn: true, webId: 'https://pod.example.com/profile/card#me' })
+      const { webId } = useTwinPodAuth({ _sessionOverride: mock })
+      expect(webId.value).toBe('https://pod.example.com/profile/card#me')
     })
 
   })

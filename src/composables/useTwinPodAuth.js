@@ -85,11 +85,14 @@ export function useTwinPodAuth({ clientName = 'NoteWorld', _sessionOverride = nu
    * If login throws (e.g. invalid issuer), error.value is set instead.
    */
   async function login(oidcIssuer, redirectUrl = window.location.origin) {
+    loading.value = true
     error.value = null
     try {
       await _session.login({ oidcIssuer, redirectUrl, clientName })
     } catch (e) {
       error.value = { type: 'auth', message: e.message }
+    } finally {
+      loading.value = false
     }
   }
 
@@ -101,6 +104,7 @@ export function useTwinPodAuth({ clientName = 'NoteWorld', _sessionOverride = nu
    * revocation endpoint, which avoids a second redirect.
    */
   async function logout() {
+    loading.value = true
     error.value = null
     try {
       await _session.logout({ logoutType: 'app' })
@@ -108,6 +112,8 @@ export function useTwinPodAuth({ clientName = 'NoteWorld', _sessionOverride = nu
       webId.value = null
     } catch (e) {
       error.value = { type: 'auth', message: e.message }
+    } finally {
+      loading.value = false
     }
   }
 
