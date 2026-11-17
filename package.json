@@ -34,6 +34,6 @@
     "url": "https://github.com/KaiGilb/twinpod-auth"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   }
 }

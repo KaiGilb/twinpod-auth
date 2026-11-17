@@ -102,18 +102,30 @@ export function useTwinPodAuth({ clientName = 'NoteWorld', _sessionOverride = nu
    * Logs out locally (clears tokens from memory/storage).
    * logoutType: 'app' performs a local-only logout without hitting the IdP's
    * revocation endpoint, which avoids a second redirect.
+   *
+   * Reactive state is cleared synchronously before awaiting the Inrupt cleanup
+   * so the calling app's router watcher fires immediately and navigates to /login
+   * without delay. We deliberately do NOT set loading=true: that shows the
+   * "Connecting…" splash, which prevents LoginView from rendering while the
+   * watcher pushes the route — creating the appearance of a hung logout.
    */
   async function logout() {
-    loading.value = true
     error.value = null
+    // Clear auth state immediately — App.vue watcher fires and routes to /login
+    isLoggedIn.value = false
+    webId.value = null
+    // Clean up the Inrupt session in the background. logoutType:'app' is local-only
+    // (no IdP redirect) but can hang if IndexedDB is slow — cap at 3 s so it never
+    // blocks the UI. Storage will be cleared on the next handleRedirect() call if
+    // the timeout fires first.
     try {
-      await _session.logout({ logoutType: 'app' })
-      isLoggedIn.value = false
-      webId.value = null
+      await Promise.race([
+        _session.logout({ logoutType: 'app' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('logout timeout')), 3000))
+      ])
     } catch (e) {
-      error.value = { type: 'auth', message: e.message }
-    } finally {
-      loading.value = false
+      // Non-fatal — reactive state is already cleared above
+      console.warn('[useTwinPodAuth] logout cleanup:', e.message)
     }
   }
 

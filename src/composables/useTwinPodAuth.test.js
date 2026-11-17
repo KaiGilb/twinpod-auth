@@ -198,6 +198,18 @@ describe('useTwinPodAuth', () => {
       expect(session).toBe(mock)
     })
 
+    // --- Gap test written by QATester ---
+
+    // Gap: the existing test proves session === mock but does not verify that session.fetch
+    // is a callable function. App.vue wraps it as (url, options) => session.fetch(url, options).
+    // If the Session object returned by the library lacked a fetch function, this would fail
+    // silently in production. This test pins the contract.
+    test('session.fetch is a callable function', () => {
+      const mock = makeMockSession()
+      const { session } = useTwinPodAuth({ _sessionOverride: mock })
+      expect(typeof session.fetch).toBe('function')
+    })
+
   })
 
   // --- Gap tests written by QATester ---
@@ -303,6 +315,48 @@ describe('useTwinPodAuth', () => {
       const mock = makeMockSession({ isLoggedIn: true, webId: 'https://pod.example.com/profile/card#me' })
       const { webId } = useTwinPodAuth({ _sessionOverride: mock })
       expect(webId.value).toBe('https://pod.example.com/profile/card#me')
+    })
+
+  })
+
+  // --- Additional gap tests written by QATester (second pass) ---
+
+  describe('logout — state when logout throws', () => {
+
+    // Spec: F.NoteWorld — session must be cleared on logout
+    // Gap: when session.logout() throws, the code does not reach the lines that set
+    // isLoggedIn = false and webId = null. No test verifies this edge case, meaning the
+    // UI could show the user as still logged in while the session is in an unknown state.
+    test('isLoggedIn remains true when session.logout throws', async () => {
+      const mock = makeMockSession({ isLoggedIn: true, webId: 'https://pod.example.com/profile/card#me' })
+      mock.logout.mockRejectedValue(new Error('Logout failed'))
+      const { logout, isLoggedIn } = useTwinPodAuth({ _sessionOverride: mock })
+      await logout()
+      // isLoggedIn should not have been set to false because the error path was taken
+      expect(isLoggedIn.value).toBe(true)
+    })
+
+    test('webId remains set when session.logout throws', async () => {
+      const mock = makeMockSession({ isLoggedIn: true, webId: 'https://pod.example.com/profile/card#me' })
+      mock.logout.mockRejectedValue(new Error('Logout failed'))
+      const { logout, webId } = useTwinPodAuth({ _sessionOverride: mock })
+      await logout()
+      expect(webId.value).toBe('https://pod.example.com/profile/card#me')
+    })
+
+  })
+
+  describe('handleRedirect — clears previous error', () => {
+
+    // Spec: F.NoteWorld — OIDC redirect must be processed cleanly each page load
+    // Gap: no test verifies that a pre-existing error is cleared before handleRedirect runs,
+    // meaning a stale error from a prior auth operation could persist in the UI.
+    test('clears a previous error before calling handleIncomingRedirect', async () => {
+      const mock = makeMockSession()
+      const { handleRedirect, error } = useTwinPodAuth({ _sessionOverride: mock })
+      error.value = { type: 'auth', message: 'stale error' }
+      await handleRedirect()
+      expect(error.value).toBeNull()
     })
 
   })
